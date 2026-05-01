@@ -1,0 +1,350 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// FundedFlips — Prisma Schema
+// Database: Neon PostgreSQL
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── ENUMS ──────────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountType {
+  INSTANT
+  ONE_STEP_TEST
+}
+
+enum AccountStatus {
+  PENDING       // Awaiting deposit approval
+  TEST_ACTIVE   // One-step test in progress
+  TEST_PASSED   // Test passed, awaiting funded activation
+  TEST_FAILED   // Test failed
+  ACTIVE        // Funded and actively trading
+  RESTRICTED    // Admin-restricted
+  SUSPENDED     // Inactive for 7+ days
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_DEPOSIT
+  DEPOSIT_SUBMITTED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  AUTO_REJECTED
+}
+
+enum TradeOutcome {
+  PENDING
+  WON
+  LOST
+  VOID
+}
+
+enum TradeMarket {
+  MATCH_WINNER
+}
+
+// ─── MODELS ─────────────────────────────────────────────────────────────────
+
+model User {
+  id              String          @id @default(cuid())
+  email           String          @unique
+  passwordHash    String
+  fullName        String?
+  role            Role            @default(USER)
+  isEmailVerified Boolean         @default(false)
+  lastLoginAt     DateTime?
+  lastActiveAt    DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  accounts        Account[]
+  orders          Order[]
+  deposits        Deposit[]
+  withdrawals     Withdrawal[]
+  refreshTokens   RefreshToken[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Account {
+  id                   String        @id @default(cuid())
+  userId               String
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId              String        @unique
+  order                Order         @relation(fields: [orderId], references: [id])
+
+  type                 AccountType
+  status               AccountStatus @default(PENDING)
+  capitalSize          Float         // e.g. 1000, 3000, 5000...
+  currentBalance       Float         @default(0)
+
+  // Drawdown tracking
+  dailyDrawdownPct     Float         @default(0)   // Current day's drawdown %
+  lifetimeDrawdownPct  Float         @default(0)   // Lifetime max drawdown %
+  dailyDrawdownResetAt DateTime?     // Last midnight GMT reset
+
+  // One-Step Test specific
+  testStartDate        DateTime?
+  testEndDate          DateTime?     // testStartDate + 14 days
+  testTradesCount      Int           @default(0)
+  testProfitPct        Float         @default(0)
+
+  // Stats
+  totalTrades          Int           @default(0)
+  totalWins            Int           @default(0)
+  totalLosses          Int           @default(0)
+  totalPnl             Float         @default(0)  // Running P&L in $
+
+  // A-Book flag (admin can toggle)
+  isABook              Boolean       @default(false)
+
+  lastTradeAt          DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  trades               Trade[]
+  withdrawals          Withdrawal[]
+  drawdownSnapshots    DrawdownSnapshot[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  hashId          String      @unique @default(cuid())  // Public-facing order ID
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountType     AccountType
+  capitalSize     Float
+  price           Float       // Amount to pay
+  discountPct     Float       @default(0)    // e.g. 10% re-apply discount
+  finalPrice      Float       // price * (1 - discountPct/100)
+  status          OrderStatus @default(PENDING)
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  account         Account?
+  deposit         Deposit?
+
+  @@index([userId])
+  @@index([hashId])
+  @@index([status])
+}
+
+model Deposit {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id])
+
+  cryptocurrency  String        // USDT, USDC, ETH, BTC
+  blockchain      String        // ERC20, TRC20, BEP20
+  txHash          String?       // Transaction hash from user
+  amount          Float
+  status          DepositStatus @default(PENDING)
+
+  reviewedBy      String?       // Admin ID who reviewed
+  reviewedAt      DateTime?
+  rejectionReason String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([orderId])
+}
+
+model Withdrawal {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account          @relation(fields: [accountId], references: [id])
+
+  cryptocurrency  String
+  blockchain      String
+  walletAddress   String
+  amount          Float
+
+  status          WithdrawalStatus @default(PENDING)
+
+  // Eligibility snapshot at time of request
+  profitPctAtRequest  Float      @default(0)
+  dailyDDAtRequest    Float      @default(0)
+  lifetimeDDAtRequest Float      @default(0)
+
+  // Auto-rejection reason (if applicable)
+  rejectionReason String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([status])
+}
+
+model Trade {
+  id              String        @id @default(cuid())
+  accountId       String
+  account         Account       @relation(fields: [accountId], references: [id])
+
+  // Match details
+  matchId         String        // External match identifier
+  matchTitle      String        // e.g. "Man City vs Liverpool"
+  matchStartTime  DateTime
+  market          TradeMarket   @default(MATCH_WINNER)
+
+  // Bet details
+  selection       String        // e.g. "Manchester City"
+  odds            Float         // 1.5 - 5.0
+  stake           Float         // $ amount
+  potentialPayout Float         // stake * odds
+
+  outcome         TradeOutcome  @default(PENDING)
+  pnl             Float         @default(0)   // Realized P&L
+
+  settledAt       DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@unique([accountId, matchId])  // Prevent duplicate bets on same match
+  @@index([accountId])
+  @@index([outcome])
+  @@index([createdAt])
+}
+
+model WalletConfig {
+  id              String   @id @default(cuid())
+  cryptocurrency  String   // USDT, USDC, ETH, BTC
+  blockchain      String   // ERC20, TRC20, BEP20
+  walletAddress   String
+  qrCodeUrl       String?  // URL to QR code image
+  isActive        Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([cryptocurrency, blockchain])
+}
+
+model PlatformRule {
+  id              String   @id @default(cuid())
+  key             String   @unique  // e.g. "pre_match_window_minutes"
+  title           String
+  description     String
+  value           String   // Stored as string, parsed by app
+  isEnabled       Boolean  @default(true)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DrawdownSnapshot {
+  id              String   @id @default(cuid())
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id])
+
+  date            DateTime @db.Date  // The calendar day
+  startBalance    Float              // Balance at start of day
+  lowestBalance   Float              // Lowest point during day
+  drawdownPct     Float              // (start - lowest) / start * 100
+
+  @@unique([accountId, date])
+  @@index([accountId])
+}
+
+model CapitalSizeConfig {
+  id        String      @id @default(cuid())
+  amount    Float       @unique  // 1000, 3000, 5000, 10000, 25000, 50000
+  price     Float                // 39, 79, 99, 149, 299, 399
+  isActive  Boolean     @default(true)
+}
+
+// ─── ADMIN-MANAGED EVENTS ───────────────────────────────────────────────────
+
+model Match {
+  id          String   @id @default(cuid())
+  league      String                        // e.g. "Premier League"
+  team1Name   String
+  team1Odds   Float
+  team2Name   String
+  team2Odds   Float
+  drawOdds    Float?                         // Optional draw odds
+  startTime   DateTime
+  isLive      Boolean  @default(false)
+  isActive    Boolean  @default(true)        // Admin can hide matches
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([startTime])
+}
+
+model PredictionMarket {
+  id          String   @id @default(cuid())
+  category    String                         // e.g. "Crypto", "Politics"
+  question    String
+  endDate     DateTime
+  yesOdds     Float
+  noOdds      Float
+  volume      String   @default("$0")       // Display string
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([category])
+}
+
+model RateLimitLog {
+  id        String   @id @default(cuid())
+  ip        String
+  endpoint  String
+  count     Int      @default(1)
+  windowStart DateTime @default(now())
+
+  @@index([ip, endpoint, windowStart])
+}
