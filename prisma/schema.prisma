@@ -79,6 +79,13 @@ model User {
   lastActiveAt    DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+  
+  // Settings & Preferences
+  language        String          @default("English (US)")
+  timezone        String          @default("GMT (Greenwich Mean Time)")
+  theme           String          @default("dark")
+  notificationSettings Json?        // Stores JSON object for various notification toggles
+
 
   accounts        Account[]
   orders          Order[]
