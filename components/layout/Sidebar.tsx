@@ -15,7 +15,8 @@ import {
   ArrowDownToLine,
   Gavel,
   Menu,
-  ChevronLeft
+  ChevronLeft,
+  FileText
 } from "lucide-react";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -31,6 +32,7 @@ const navItems = [
   { name: "Trade Monitoring", href: "/dashboard/trade-monitoring", icon: Activity },
   { name: "Withdrawals", href: "/dashboard/withdrawals", icon: ArrowDownToLine },
   { name: "Rules", href: "/dashboard/rules", icon: Gavel },
+  { name: "CMS Management", href: "/dashboard/cms", icon: FileText },
 ];
 
 export function Sidebar() {
