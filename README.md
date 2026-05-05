@@ -34,27 +34,27 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
 # Funded_flip
 
-how to test user and a normal account :- 
+how to test user and a normal account :-
 To test the Test Active Account feature effectively, you need to simulate both the "Breach" (Instant Failure) and the "Evaluation" (Pass/Fail at the end of the period) scenarios.
 
 Here is the step-by-step guide to testing this:
 
 1. Initial Setup (Creating the Account)
-Purchase: Go to the /user/purchase page and select ONE-STEP TEST.
-Approve: In your database (or via the Admin Panel), find the Order/Deposit and set the status to APPROVED.
-Verify: Ensure the Account status is now TEST_ACTIVE. You should see the "Test in Progress" UI in the user dashboard.
+   Purchase: Go to the /user/purchase page and select ONE-STEP TEST.
+   Approve: In your database (or via the Admin Panel), find the Order/Deposit and set the status to APPROVED.
+   Verify: Ensure the Account status is now TEST_ACTIVE. You should see the "Test in Progress" UI in the user dashboard.
 2. Testing Instant Failure (Drawdown Breach)
-The system checks for breaches every time a trade is placed.
+   The system checks for breaches every time a trade is placed.
 
 The Scenario: A test account has a $1,000 capital and a 20% daily drawdown limit ($200).
 The Action: Place a trade with a stake of $201.
 Expected Result:
 The API (/api/trades) should return a message saying the account has been breached.
 The account status in the database should immediately change to TEST_FAILED.
-The user should no longer be able to place trades.
-3. Testing Test Completion (Pass/Fail)
+The user should no longer be able to place trades. 3. Testing Test Completion (Pass/Fail)
 Evaluation happens via the Cron job (found in app/api/cron/route.ts). Since you don't want to wait 14 days, you can "force" the test to end by manipulating the database.
 
 Step A: Mock the Test Completion Data
@@ -77,10 +77,34 @@ GET /api/cron
 Step C: Verify Results
 Check the account status. It should have transitioned from TEST_ACTIVE to either TEST_PASSED or TEST_FAILED based on the data you set in Step A.
 Summary of Rules to Verify:
-Rule	Success Requirement	Failure Trigger
-Profit Target	Balance ≥ Capital + 25%	Balance < Capital + 25% at testEndDate
-Min Trades	testTradesCount ≥ 4	testTradesCount < 4 at testEndDate
-Daily Loss	Stay below 20% of starting day balance	Stake/Loss > 20% (Instant)
-Lifetime Loss	Stay below 30% of initial capital	Balance < 70% of Capital (Instant)
+Rule Success Requirement Failure Trigger
+Profit Target Balance ≥ Capital + 25% Balance < Capital + 25% at testEndDate
+Min Trades testTradesCount ≥ 4 testTradesCount < 4 at testEndDate
+Daily Loss Stay below 20% of starting day balance Stake/Loss > 20% (Instant)
+Lifetime Loss Stay below 30% of initial capital Balance < 70% of Capital (Instant)
 
+<!-- when trades get rejected  -->
 
+1. General Rejection Conditions (Apply to BOTH)
+   A trade will be instantly rejected if any of these conditions are met:
+
+Invalid Status: The account is not currently ACTIVE (for Normal) or TEST_ACTIVE (for Test). Rejections happen if the account is Suspended, Restricted, or already Failed.
+Time Violation: You try to place a bet within 10 minutes of the match starting (Pre-match window).
+Odds Outside Range: The odds are lower than 1.5 or higher than 5.0.
+Bet Size Limit: A single stake exceeds 20% of your initial capital (e.g., you cannot bet more than $200 on a $1,000 account).
+Insufficient Balance: Your currentBalance is lower than the requested stake.
+Duplicate Bet: You already have an open bet on that specific match. The system only allows one bet per match to prevent hedging. 2. Drawdown Breach Rejections (The "Consequence" Difference)
+Drawdown rules are checked at the moment you place the trade. If the stake you are committing would push your account past its loss limits, the following happens:
+
+Breach Condition Test Account (ONE_STEP_TEST) Normal Account (INSTANT)
+Daily Loss > 20% Trade is placed, but account is Instantly Failed (TEST_FAILED). Trade is placed, but account is Restricted (RESTRICTED).
+Lifetime Loss > 30% Trade is placed, but account is Instantly Failed. Trade is placed, but account is Restricted.
+Note: In the current backend logic, the trade is still executed to record the final balance, but the account status is updated immediately to stop further trading.
+
+3. Summary of Differences
+   Test Accounts: Have zero tolerance. A single breach of the 20% daily or 30% lifetime loss limit ends the challenge immediately.
+   Normal Accounts: Are more "forgiving" in the sense that a breach doesn't delete the account. Instead, it triggers a RESTRICTED status which stops trading until an Admin reviews the account and decides whether to reactivate or close it.
+   Where to find these in code:
+
+Validation Rules: my-app/lib/rules-engine.ts → validateTrade()
+Drawdown Logic: my-app/app/api/trades/route.ts → Lines 121–130 (Breach checks)
