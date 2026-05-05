@@ -355,3 +355,42 @@ model RateLimitLog {
 
   @@index([ip, endpoint, windowStart])
 }
+
+// ─── CMS MODELS ─────────────────────────────────────────────────────────────
+
+model BlogPost {
+  id              String      @id @default(cuid())
+  title           String
+  slug            String      @unique
+  content         String      @db.Text
+  excerpt         String?     @db.Text
+  coverImage      String?
+  status          String      @default("Draft") // Draft, Published, Scheduled
+  visibility      String      @default("Public") // Public, Private
+  publishDate     DateTime    @default(now())
+  
+  authorId        String
+  authorName      String      @default("Admin")
+  
+  categories      Category[]
+  tags            Tag[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([slug])
+  @@index([status])
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  posts     BlogPost[]
+}
+
+model Tag {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  posts     BlogPost[]
+}
+
