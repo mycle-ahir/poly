@@ -66,7 +66,7 @@ enum TradeMarket {
   MATCH_WINNER
 }
 
-// ─── MODELS ─────────────────────────────────────────────────────────────────
+
 
 model User {
   id              String          @id @default(cuid())
@@ -80,11 +80,11 @@ model User {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   
-  // Settings & Preferences
+
   language        String          @default("English (US)")
   timezone        String          @default("GMT (Greenwich Mean Time)")
   theme           String          @default("dark")
-  notificationSettings Json?        // Stores JSON object for various notification toggles
+  notificationSettings Json?        
 
 
   accounts        Account[]
@@ -118,15 +118,15 @@ model Account {
 
   type                 AccountType
   status               AccountStatus @default(PENDING)
-  capitalSize          Float         // e.g. 1000, 3000, 5000...
+  capitalSize          Float         
   currentBalance       Float         @default(0)
 
-  // Drawdown tracking
-  dailyDrawdownPct     Float         @default(0)   // Current day's drawdown %
-  lifetimeDrawdownPct  Float         @default(0)   // Lifetime max drawdown %
+
+  dailyDrawdownPct     Float         @default(0)   
+  lifetimeDrawdownPct  Float         @default(0)   
   dailyDrawdownResetAt DateTime?     // Last midnight GMT reset
 
-  // One-Step Test specific
+
   testStartDate        DateTime?
   testEndDate          DateTime?     // testStartDate + 14 days
   testTradesCount      Int           @default(0)
@@ -136,9 +136,9 @@ model Account {
   totalTrades          Int           @default(0)
   totalWins            Int           @default(0)
   totalLosses          Int           @default(0)
-  totalPnl             Float         @default(0)  // Running P&L in $
+  totalPnl             Float         @default(0)  
 
-  // A-Book flag (admin can toggle)
+
   isABook              Boolean       @default(false)
 
   lastTradeAt          DateTime?
@@ -155,7 +155,7 @@ model Account {
 
 model Order {
   id              String      @id @default(cuid())
-  hashId          String      @unique @default(cuid())  // Public-facing order ID
+  hashId          String      @unique @default(cuid())  
   userId          String
   user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -310,7 +310,7 @@ model CapitalSizeConfig {
   isActive  Boolean     @default(true)
 }
 
-// ─── ADMIN-MANAGED EVENTS ───────────────────────────────────────────────────
+
 
 model Match {
   id          String   @id @default(cuid())
@@ -332,12 +332,12 @@ model Match {
 
 model PredictionMarket {
   id          String   @id @default(cuid())
-  category    String                         // e.g. "Crypto", "Politics"
+  category    String
   question    String
   endDate     DateTime
   yesOdds     Float
   noOdds      Float
-  volume      String   @default("$0")       // Display string
+  volume      String   @default("$0")       
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -356,7 +356,7 @@ model RateLimitLog {
   @@index([ip, endpoint, windowStart])
 }
 
-// ─── CMS MODELS ─────────────────────────────────────────────────────────────
+
 
 model BlogPost {
   id              String      @id @default(cuid())
